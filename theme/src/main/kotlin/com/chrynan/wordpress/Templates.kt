@@ -19,6 +19,15 @@ interface HtmlTemplate : Template {
     fun <T> TagConsumer<T>.layout(): T
 }
 
+interface PartialHtmlTemplate : HtmlTemplate {
+
+    override val location
+        get() = ""
+
+    override val name: String
+        get() = ""
+}
+
 fun HTMLTag.include(template: HtmlTemplate) {
     +buildString {
         appendHTML(prettyPrint = true).apply {
@@ -65,11 +74,6 @@ interface PhpScriptFileTemplate : PhpScriptTemplate {
     override fun PhpBuilder.script() = inputFile.inputStream().bufferedReader().use { it.readText() }
 }
 
-interface StyleTemplate : Template {
-
-    fun style(): Stylesheet
-}
-
 fun HTMLTag.php(builder: PhpBuilder.() -> String) {
     val phpBuilder = PhpBuilder()
     unsafe { raw("<?php \n ${builder.invoke(phpBuilder)} \n ?>") }
@@ -88,4 +92,9 @@ fun HTMLTag.php(template: PhpScriptTemplate) {
 fun php(template: PhpScriptTemplate): String {
     val phpBuilder = PhpBuilder()
     return "<?php \n ${phpBuilder.apply { template.apply { script() } }} \n ?>"
+}
+
+interface StyleTemplate : Template {
+
+    fun style(): Stylesheet
 }
