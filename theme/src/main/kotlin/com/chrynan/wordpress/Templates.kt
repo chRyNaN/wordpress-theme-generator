@@ -14,21 +14,15 @@ interface Template {
     val location: String
 }
 
-interface HtmlTemplate : Template {
+interface PartialHtmlTemplate {
 
     fun <T> TagConsumer<T>.layout(): T
 }
 
-interface PartialHtmlTemplate : HtmlTemplate {
+interface HtmlTemplate : Template,
+    PartialHtmlTemplate
 
-    override val location
-        get() = ""
-
-    override val name: String
-        get() = ""
-}
-
-fun HTMLTag.include(template: HtmlTemplate) {
+fun HTMLTag.include(template: PartialHtmlTemplate) {
     +buildString {
         appendHTML(prettyPrint = true).apply {
             template.apply {
@@ -38,7 +32,7 @@ fun HTMLTag.include(template: HtmlTemplate) {
     }
 }
 
-fun include(template: HtmlTemplate) =
+fun include(template: PartialHtmlTemplate) =
     buildString {
         appendHTML(prettyPrint = true).apply {
             template.apply {
@@ -47,16 +41,41 @@ fun include(template: HtmlTemplate) =
         }
     }
 
-class PhpBuilder {
+open class PhpBuilder {
 
-    fun include(template: HtmlTemplate): String =
-        buildString {
-            appendHTML(prettyPrint = true).apply {
-                template.apply {
-                    layout()
-                }
+    protected val sb = StringBuilder()
+
+    operator fun plus(php: String) {
+        sb.append(php)
+    }
+
+    operator fun plus(template: HtmlTemplate) {
+        sb.appendHTML(prettyPrint = true).apply {
+            template.apply {
+                layout()
             }
         }
+    }
+
+    operator fun plus(template: PartialHtmlTemplate) {
+        sb.appendHTML(prettyPrint = true).apply {
+            template.apply {
+                layout()
+            }
+        }
+    }
+
+    internal open fun build() = "<?php \n $sb \n ?>"
+}
+
+class PhpConditionBuilder(private val condition: String) : PhpBuilder() {
+
+    override fun build() =
+        """
+            <?php if ( $condition ) : ?>
+                $sb
+            <?php endif; ?>
+        """
 }
 
 interface PhpScriptTemplate : Template {
@@ -74,24 +93,52 @@ interface PhpScriptFileTemplate : PhpScriptTemplate {
     override fun PhpBuilder.script() = inputFile.inputStream().bufferedReader().use { it.readText() }
 }
 
-fun HTMLTag.php(builder: PhpBuilder.() -> String) {
+fun HTMLTag.php(builder: PhpBuilder.() -> Unit) {
     val phpBuilder = PhpBuilder()
-    unsafe { raw("<?php \n ${builder.invoke(phpBuilder)} \n ?>") }
-}
-
-fun php(builder: PhpBuilder.() -> String): String {
-    val phpBuilder = PhpBuilder()
-    return "<?php \n ${builder.invoke(phpBuilder)} \n ?>"
+    builder.invoke(phpBuilder)
+    unsafe { raw(phpBuilder.build()) }
 }
 
 fun HTMLTag.php(template: PhpScriptTemplate) {
     val phpBuilder = PhpBuilder()
-    unsafe { raw("<?php \n ${phpBuilder.apply { template.apply { script() } }} \n ?>") }
+    phpBuilder.apply { template.apply { script() } }
+    unsafe { raw(phpBuilder.build()) }
+}
+
+fun HTMLTag.phpIf(condition: String, builder: PhpConditionBuilder.() -> Unit) {
+    val phpBuilder = PhpConditionBuilder(condition)
+    builder.invoke(phpBuilder)
+    unsafe { raw(phpBuilder.build()) }
+}
+
+fun HTMLTag.phpIf(condition: String, template: PhpScriptTemplate) {
+    val phpBuilder = PhpConditionBuilder(condition)
+    phpBuilder.apply { template.apply { script() } }
+    unsafe { raw(phpBuilder.build()) }
+}
+
+fun php(builder: PhpBuilder.() -> Unit): String {
+    val phpBuilder = PhpBuilder()
+    builder.invoke(phpBuilder)
+    return phpBuilder.build()
 }
 
 fun php(template: PhpScriptTemplate): String {
     val phpBuilder = PhpBuilder()
-    return "<?php \n ${phpBuilder.apply { template.apply { script() } }} \n ?>"
+    phpBuilder.apply { template.apply { script() } }
+    return phpBuilder.build()
+}
+
+fun phpIf(condition: String, builder: PhpConditionBuilder.() -> String): String {
+    val phpBuilder = PhpConditionBuilder(condition)
+    builder.invoke(phpBuilder)
+    return phpBuilder.build()
+}
+
+fun phpIf(condition: String, template: PhpScriptTemplate): String {
+    val phpBuilder = PhpConditionBuilder(condition)
+    phpBuilder.apply { template.apply { script() } }
+    return phpBuilder.build()
 }
 
 interface StyleTemplate : Template {
